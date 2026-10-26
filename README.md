@@ -1,69 +1,28 @@
-# LedgerApp - Financial Record Management API
+# LedgerApp — Soft Deletion Strategies
 
-Welcome to the LedgerApp starter repository! This is a core financial API designed for early-stage startups to manage user accounts and transaction history with speed and efficiency.
+LedgerApp is a financial record API refactored from permanent hard deletes to recoverable soft deletion. The pre-refactor hard-delete inventory was committed in `AUDIT.md` before the implementation changes.
 
-## 🚀 Getting Started
+## Live Deployment
 
-### Prerequisites
-- Node.js (v18+)
-- PostgreSQL (v14+)
+Live preview: https://3000-ips6j5fdth1e1ikgtkorw-f16c4bec.sg2.manus.computer/
 
-### Installation
-1. Clone the repository and install dependencies:
-   ```bash
-   npm install
-   ```
+## Implementation
 
-2. Create a PostgreSQL database called `ledgerapp`.
+- Added `deleted_at TIMESTAMPTZ DEFAULT NULL` to users, accounts, and transactions.
+- Replaced all three hard-delete routes with `UPDATE ... SET deleted_at = NOW()`.
+- Added active filters to normal list, detail, and relationship queries.
+- Added `/users/audit/deleted`, `/accounts/audit/deleted`, and `/transactions/audit/deleted` routes for retained evidence.
+- Added restore routes for each entity.
+- Changed foreign keys to `ON DELETE RESTRICT` so an accidental physical delete cannot cascade through financial history.
+- Added partial active indexes for user, account, and transaction paths.
+- Documented storage estimates, performance implications, compliance use, and hard-delete exceptions in `TRADEOFFS.md`.
 
-3. Initialize the database schema:
-   ```bash
-   psql -d ledgerapp -f schema.sql
-   ```
+## Verification
 
-4. Configure environment variables:
-   - Create a `.env` file based on `.env.example`.
-   - Set the `DB_URL` with your database credentials.
+```bash
+npm install
+npm run check
+npm test
+```
 
-5. Start the application:
-   ```bash
-   npm start
-   ```
-
----
-
-## 🛠 API Endpoints
-
-### 👤 Users
-- `GET /users`: List all users.
-- `GET /users/:id`: Get user details.
-- `POST /users`: Create a new user.
-- `DELETE /users/:id`: Delete a user account from the system.
-
-### 💳 Accounts
-- `GET /accounts`: List all bank accounts.
-- `GET /accounts/user/:userId`: List all accounts specifically for a user.
-- `POST /accounts`: Create a new checking/savings account.
-- `DELETE /accounts/:id`: Remove an account from the database.
-
-### 💸 Transactions
-- `GET /transactions`: List all global transactions.
-- `GET /transactions/account/:accountId`: List all transactions for a specific account.
-- `POST /transactions`: Post a new credit/debit transaction.
-- `DELETE /transactions/:id`: Erase a transaction record permanently.
-
----
-
-## 🏗 Project Structure
-
-- `app.js`: Express application initialization and middleware setup.
-- `db.js`: Database connection pool management via `pg`.
-- `schema.sql`: Core database structure defining Users, Accounts, and Transactions.
-- `routes/`: Implementation of RESTful endpoints for each entity.
-
----
-
-## 💡 Tech Stack
-- **Node.js + Express**
-- **PostgreSQL**
-- **pg (node-postgres)** for raw SQL execution
+The smoke test proves that deleted records disappear from normal responses, remain available through audit routes, and can be restored. The live health response is available at `/` and reports `deletionPolicy: soft-delete`.

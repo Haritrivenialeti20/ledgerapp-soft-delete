@@ -1,0 +1,7 @@
+node_modules/
+.env
+*.wav
+*.mp4
+walkthrough-frames/
+walkthrough-frames.txt
+.DS_Store

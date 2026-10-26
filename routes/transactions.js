@@ -2,54 +2,37 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 
-// GET all transactions in the system
 router.get('/', async (req, res) => {
-  try {
-    const { rows } = await db.query('SELECT * FROM transactions');
-    res.json(rows);
-  } catch (err) {
-    res.status(500).json({ error: 'Database execution error' });
-  }
+  try { const { rows } = await db.query('SELECT * FROM transactions WHERE deleted_at IS NULL'); res.json(rows); }
+  catch (err) { res.status(500).json({ error: 'Database execution error' }); }
 });
-
-// GET transactions by account_id
+router.get('/audit/deleted', async (req, res) => {
+  try { const { rows } = await db.query('SELECT * FROM transactions WHERE deleted_at IS NOT NULL'); res.json(rows); }
+  catch (err) { res.status(500).json({ error: 'Audit query failed' }); }
+});
 router.get('/account/:accountId', async (req, res) => {
-  try {
-    const { rows } = await db.query('SELECT * FROM transactions WHERE account_id = $1', [req.params.accountId]);
-    res.json(rows);
-  } catch (err) {
-    res.status(500).json({ error: 'Database retrieval error' });
-  }
+  try { const { rows } = await db.query('SELECT * FROM transactions WHERE account_id = $1 AND deleted_at IS NULL', [req.params.accountId]); res.json(rows); }
+  catch (err) { res.status(500).json({ error: 'Database retrieval error' }); }
 });
-
-// CREATE a new transaction event
 router.post('/', async (req, res) => {
   const { account_id, amount, type, description } = req.body;
   try {
-    const { rows } = await db.query(
-      'INSERT INTO transactions (account_id, amount, type, description) VALUES ($1, $2, $3, $4) RETURNING *',
-      [account_id, amount, type, description]
-    );
+    const { rows } = await db.query('INSERT INTO transactions (account_id, amount, type, description) VALUES ($1, $2, $3, $4) RETURNING *', [account_id, amount, type, description]);
     res.status(201).json(rows[0]);
-  } catch (err) {
-    res.status(500).json({ error: 'Transaction record creation failed' });
-  }
+  } catch (err) { res.status(500).json({ error: 'Transaction record creation failed' }); }
 });
-
-// DELETE single transaction permanently from the record
 router.delete('/:id', async (req, res) => {
   try {
-    // Hard DELETE from transactions table
-    const { rowCount } = await db.query('DELETE FROM transactions WHERE id = $1', [req.params.id]);
-    
-    if (rowCount === 0) {
-      return res.status(404).json({ error: 'Transaction ID not found' });
-    }
-    
-    res.json({ message: 'Transaction record permanently erased from LedgerApp' });
-  } catch (err) {
-    res.status(500).json({ error: 'Delete operation failed' });
-  }
+    const { rowCount } = await db.query('UPDATE transactions SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL RETURNING *', [req.params.id]);
+    if (rowCount === 0) return res.status(404).json({ error: 'Active transaction not found' });
+    res.json({ message: 'Transaction soft-deleted and retained for recovery/audit' });
+  } catch (err) { res.status(500).json({ error: 'Soft-delete operation failed' }); }
 });
-
+router.post('/:id/restore', async (req, res) => {
+  try {
+    const { rowCount } = await db.query('UPDATE transactions SET deleted_at = NULL WHERE id = $1 AND deleted_at IS NOT NULL RETURNING *', [req.params.id]);
+    if (rowCount === 0) return res.status(404).json({ error: 'Deleted transaction not found' });
+    res.json({ message: 'Transaction restored' });
+  } catch (err) { res.status(500).json({ error: 'Restore operation failed' }); }
+});
 module.exports = router;
