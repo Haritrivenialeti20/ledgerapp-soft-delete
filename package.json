@@ -1,11 +1,13 @@
 {
-  "name": "ledger-app-starter",
+  "name": "ledger-app-soft-delete",
   "version": "1.0.0",
-  "description": "Financial record management API for LedgerApp",
+  "description": "Financial record API with recoverable soft deletion",
   "main": "app.js",
   "scripts": {
     "start": "node app.js",
-    "dev": "nodemon app.js"
+    "dev": "nodemon app.js",
+    "check": "node --check app.js && node --check db.js && node --check routes/users.js && node --check routes/accounts.js && node --check routes/transactions.js && node --check tests/smoke-test.js",
+    "test": "node tests/smoke-test.js"
   },
   "dependencies": {
     "dotenv": "^16.4.5",

@@ -1,0 +1,46 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+*{box-sizing:border-box}body{margin:0;background:#101820;color:#edf4f5;font-family:Arial,sans-serif}.frame{width:1280px;height:720px;padding:48px 68px;background:#18242c;position:relative;overflow:hidden}.k{color:#7ce0a4;font-size:17px;letter-spacing:3px;font-weight:700}.h{font-size:40px;font-weight:800;margin:14px 0 24px}.sub{font-size:20px;color:#b2c1c6;line-height:1.4}.code{background:#0b1115;border-radius:12px;padding:21px;color:#dce7e9;font:17px/1.43 'DejaVu Sans Mono',monospace;white-space:pre-wrap}.bad{color:#ff9898}.good{color:#7ce0a4}.grid{display:grid;grid-template-columns:1fr 1fr;gap:22px}.card{border:1px solid #3a4b53;border-radius:13px;padding:20px}.footer{position:absolute;bottom:22px;left:68px;right:68px;border-top:1px solid #3a4b53;padding-top:9px;color:#7d959c;font-size:13px;display:flex;justify-content:space-between}.tag{display:inline-block;background:#7ce0a4;color:#18242c;border-radius:15px;padding:6px 12px;margin:4px;font-weight:700}
+</style></head><body>
+<section class="frame"><div class="k">LEDGERAPP · BEFORE</div><div class="h">The original route permanently erased data</div><div class="grid"><div class="code"><span class="bad">// Hard DELETE from transactions</span>
+const { rowCount } = await db.query(
+  'DELETE FROM transactions WHERE id = $1',
+  [req.params.id]
+)
+
+res.json({ message:
+  'Transaction record permanently erased'
+})</div><div class="card"><div class="h" style="font-size:27px">Audit finding</div><div class="sub">A financial event, amount, type, description, and timestamp disappeared permanently.</div><div class="sub" style="margin-top:18px">The same pattern existed in users and accounts. There was no recovery route, audit route, or deletion timestamp.</div></div></div><div class="footer"><span>Actual starter code: routes/transactions.js</span><span>1 / 5</span></div></section>
+<section class="frame"><div class="k">LEDGERAPP · CHANGE 01</div><div class="h">Add a timestamp instead of destroying the row</div><div class="grid"><div class="code"><span class="good">deleted_at TIMESTAMPTZ DEFAULT NULL</span>
+
+-- Active means deleted_at IS NULL
+-- Retained evidence has a timestamp
+
+<span class="good">UPDATE transactions</span>
+<span class="good">SET deleted_at = NOW()</span>
+<span class="good">WHERE id = $1 AND deleted_at IS NULL</span></div><div class="card"><div class="h" style="font-size:27px">Schema decision</div><div class="sub">Users, accounts, and transactions all receive deleted_at because all three have recovery or compliance value.</div><div style="margin-top:20px"><span class="tag">recoverable</span><span class="tag">auditable</span><span class="tag">timestamped</span></div></div></div><div class="footer"><span>Actual code: schema.sql and routes/*.js</span><span>2 / 5</span></div></section>
+<section class="frame"><div class="k">LEDGERAPP · CHANGE 02</div><div class="h">Normal reads hide history; audit reads reveal it</div><div class="grid"><div class="code"><span class="good">// Product path</span>
+SELECT * FROM transactions
+WHERE account_id = $1
+  AND deleted_at IS NULL;
+
+<span class="good">// Audit path</span>
+SELECT * FROM transactions
+WHERE deleted_at IS NOT NULL;</div><div class="card"><div class="h" style="font-size:27px">Routes added</div><div class="sub"><strong>/transactions</strong> returns active rows only.</div><div class="sub"><strong>/transactions/audit/deleted</strong> intentionally returns retained deleted rows.</div><div class="sub"><strong>/transactions/:id/restore</strong> recovers a row by setting deleted_at back to NULL.</div></div></div><div class="footer"><span>Actual query behavior is covered by tests</span><span>3 / 5</span></div></section>
+<section class="frame"><div class="k">LEDGERAPP · CHANGE 03</div><div class="h">Performance and compliance trade-offs are documented</div><div class="grid"><div class="code"><span class="good">CREATE INDEX idx_transactions_active</span>
+ON transactions(account_id)
+<span class="good">WHERE deleted_at IS NULL;</span>
+
+24 months × 10,000 transactions/month
+= approximately 240,000 rows
+80% active = 192,000 active rows</div><div class="card"><div class="h" style="font-size:27px">TRADEOFFS.md</div><div class="sub">Soft delete fits financial history, recovery, and foreign-key relationships.</div><div class="sub" style="margin-top:14px">Hard delete remains appropriate for ephemeral tokens, temporary caches, and verified erasure workflows.</div><div class="sub" style="margin-top:14px">An auditor can query retained rows and use deleted_at as evidence of when the record left normal views.</div></div></div><div class="footer"><span>Actual document: TRADEOFFS.md</span><span>4 / 5</span></div></section>
+<section class="frame"><div class="k">LEDGERAPP · VERIFICATION</div><div class="h">The refactor preserves recovery and audit access</div><div class="code">npm test
+
+<span class="good">PASS: active filters hide deleted rows, audit routes retain them,</span>
+<span class="good">and restore recovers users</span>
+
+DELETE /users/1  → soft delete, 200
+GET /users       → user 1 hidden
+GET /users/audit/deleted → user 1 retained
+POST /users/1/restore → user 1 active again
+DELETE /accounts/10 and /transactions/100 → retained in audit paths</div><div class="sub" style="margin-top:24px">Live preview: https://3000-ips6j5fdth1e1ikgtkorw-f16c4bec.sg2.manus.computer/</div><div class="footer"><span>Audit-first commit, schema, routes, tests, README, and TRADEOFFS.md are in the PR</span><span>5 / 5</span></div></section>
+</body></html>

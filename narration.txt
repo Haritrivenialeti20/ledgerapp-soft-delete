@@ -1,0 +1,13 @@
+This walkthrough explains the LedgerApp soft-deletion refactor. LedgerApp is a financial record API with users, accounts, and transactions.
+
+The starter code permanently deleted records. In the transaction route, a DELETE statement removed a transaction by ID. The same pattern existed for users and accounts. That meant a financial amount, type, description, and timestamp could disappear with no recovery path and no audit evidence. The first commit in this repository is AUDIT.md, written before the schema or route changes, and it lists the exact hard-delete statements and consequences.
+
+The first implementation decision was to add deleted_at as a nullable timestamp to all three audited tables. A null value means the record is active. A timestamp means it has been removed from the normal product view, while the row and its original created_at value remain available. All three tables receive the field because they contain recoverable or financial information.
+
+The second decision was to replace each DELETE with an UPDATE that sets deleted_at to NOW, and to prevent repeating a soft delete with an active-row condition. The route response now says the record was soft-deleted and retained for recovery and audit. Restore endpoints set deleted_at back to null after an authorized recovery decision.
+
+The third decision was to separate normal reads from audit reads. User, account, and transaction list and detail routes add deleted_at IS NULL. Each entity also has an audit route that intentionally returns only rows where deleted_at is not null. This keeps the customer experience clean while preserving an explicit compliance path. The database foreign keys now use RESTRICT so an accidental physical delete cannot cascade through financial history.
+
+Soft deletes increase storage, so TRADEOFFS.md estimates the impact. At ten thousand transactions per month, two years produces about 240 thousand rows. With an 80 percent active rate, partial indexes on active rows keep the normal query path focused on about 192 thousand current records instead of scanning historical rows unnecessarily. The document also explains when hard delete remains right, such as temporary tokens, caches, and verified erasure workflows.
+
+The smoke test proves the complete behavior. A deleted user disappears from normal users, appears in the deleted audit route, and can be restored. Accounts and transactions follow the same pattern. The live preview reports the soft-delete policy, and the public pull request contains the audit-first history, schema, route changes, tests, README, and trade-off analysis.
